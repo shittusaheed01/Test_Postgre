@@ -46,11 +46,24 @@ async function isTableEmpty(): Promise<boolean> {
   return rows.length === 0;
 }
 
-async function insertBatch(client: PoolClient, batch: ActivityRow[]) {
+async function insertBatch(
+  client: PoolClient,
+  batch: ActivityRow[],
+  fileName?: string,
+) {
   if (batch.length === 0) return;
 
   const values: unknown[] = [];
   const placeholders: string[] = [];
+
+  // Extract date from filename: activities_YYYYMMDD.csv
+  const dateMatch = fileName?.match(/activities_(\d{4})(\d{2})(\d{2})\.csv$/);
+  let fileDate: Date | null = null;
+  if (dateMatch) {
+    const [_, year, month, day] = dateMatch;
+    fileDate = new Date(`${year}-${month}-${day}T00:00:00Z`);
+    fileDate.setHours(fileDate.getHours() + 5); // add 5 hours
+  }
 
   batch.forEach((row, index) => {
     const offset = index * 10;
@@ -66,7 +79,7 @@ async function insertBatch(client: PoolClient, batch: ActivityRow[]) {
     const safeTimestamp =
       parsedTimestamp && !isNaN(parsedTimestamp.getTime())
         ? parsedTimestamp
-        : null;
+        : fileDate; // fallback to file date + 5 hours
 
     if (row.event_timestamp && !safeTimestamp) {
       logger.warn(`Invalid timestamp skipped: ${row.event_timestamp}`);
@@ -136,7 +149,7 @@ async function importFile(client: PoolClient, filePath: string) {
 
     stream.on('end', async () => {
       try {
-        await insertBatch(client, batch);
+        await insertBatch(client, batch, path.basename(filePath));
         resolve();
       } catch (err) {
         reject(err);
