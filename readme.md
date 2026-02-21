@@ -52,17 +52,28 @@ Create a `.env` file in the project root with the following values:
 
 ```env
 PORT=8080
-DATABASE_URL=postgresql://postgres:password@localhost:5432/merchant_analytics
 NODE_ENV=development
 LOG_LEVEL=info
+
+DB_HOST=localhost
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_NAME=merchant_analytics
+DB_PORT=5432
+DB_SSL=false
 ```
 
-| Variable       | Description                              |
-| -------------- | ---------------------------------------- |
-| `PORT`         | Port the API listens on. Must be `8080`. |
-| `DATABASE_URL` | PostgreSQL connection string.            |
-| `NODE_ENV`     | `development` or `production`.           |
-| `LOG_LEVEL`    | One of `info`, `warn`, `error`, `debug`. |
+| Variable      | Description                                                     |
+| ------------- | --------------------------------------------------------------- |
+| `PORT`        | Port the API listens on. Must be `8080`.                        |
+| `NODE_ENV`    | `development` or `production`.                                  |
+| `LOG_LEVEL`   | One of `info`, `warn`, `error`, `debug`.                        |
+| `DB_HOST`     | PostgreSQL host.                                                |
+| `DB_USER`     | PostgreSQL user.                                                |
+| `DB_PASSWORD` | PostgreSQL password.                                            |
+| `DB_NAME`     | Name of the database.                                           |
+| `DB_PORT`     | PostgreSQL port. Defaults to `5432` if not set.                 |
+| `DB_SSL`      | Set to `true` to enable SSL (uses `rejectUnauthorized: false`). |
 
 ---
 
@@ -86,9 +97,26 @@ createdb merchant_analytics
 psql merchant_analytics < src/db/schema.sql
 ```
 
+This creates the `merchant_activities` table with the following columns:
+
+| Column            | Type            | Notes                                                                    |
+| ----------------- | --------------- | ------------------------------------------------------------------------ |
+| `event_id`        | `UUID`          | Primary key                                                              |
+| `merchant_id`     | `VARCHAR(20)`   | —                                                                        |
+| `event_timestamp` | `TIMESTAMP`     | Without time zone                                                        |
+| `product`         | `VARCHAR(20)`   | `POS`, `AIRTIME`, `BILLS`, `CARD_PAYMENT`, `SAVINGS`, `MONIEBOOK`, `KYC` |
+| `event_type`      | `VARCHAR(50)`   | —                                                                        |
+| `amount`          | `NUMERIC(18,2)` | Must be ≥ 0                                                              |
+| `status`          | `VARCHAR(10)`   | `SUCCESS`, `FAILED`, `PENDING`                                           |
+| `channel`         | `VARCHAR(20)`   | `POS`, `APP`, `USSD`, `WEB`, `OFFLINE`                                   |
+| `region`          | `VARCHAR(50)`   | —                                                                        |
+| `merchant_tier`   | `VARCHAR(20)`   | `STARTER`, `VERIFIED`, `PREMIUM`                                         |
+
+Indexes are created automatically on `event_timestamp`, `merchant_id`, `product`, `status`, and a composite `(status, merchant_id)` to support all analytics queries.
+
 ### 4. Add CSV Data
 
-Place all provided CSV files into the `data/` directory:
+Place all provided CSV files into the `data/` directory at the project root:
 
 ```
 data/
@@ -140,8 +168,8 @@ curl http://localhost:8080/analytics/top-merchant
 
 ## Assumptions
 
-- CSV headers match the provided schema exactly.
-- `amount` is numeric and stored as `NUMERIC` in PostgreSQL.
+- CSV headers match the schema column names exactly.
+- `amount` is numeric and stored as `NUMERIC(18,2)` in PostgreSQL.
 - KYC completion is identified by `product = 'KYC'` and `status = 'SUCCESS'`.
 - CSV data is immutable and imported only once.
 
@@ -150,7 +178,7 @@ curl http://localhost:8080/analytics/top-merchant
 ## Notes for Reviewers
 
 - Data ingestion is batched and transactional.
-- Queries are optimized with indexes.
+- Queries are optimized with indexes on all frequently filtered columns.
 - Business logic is separated from route handlers.
 - Errors are handled centrally.
 - Logs are structured and production-safe.
