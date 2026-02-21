@@ -36,35 +36,27 @@ export async function fetchTopMerchant(): Promise<{
 ========================= */
 
 export async function fetchMonthlyActiveMerchants(): Promise<
-  {
-    month: string;
-    active_merchants: number;
-  }[]
+  Record<string, number>
 > {
   const rows: MonthlyActiveMerchant[] = await getMonthlyActiveMerchants();
 
-  return rows.map((row) => ({
-    month: row.month,
-    active_merchants: row.active_merchants,
-  }));
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.month] = row.active_merchants;
+    return acc;
+  }, {});
 }
 
 /* =========================
    Product Adoption
 ========================= */
 
-export async function fetchProductAdoption(): Promise<
-  {
-    product: string;
-    merchants: number;
-  }[]
-> {
+export async function fetchProductAdoption(): Promise<Record<string, number>> {
   const rows: ProductAdoption[] = await getProductAdoption();
 
-  return rows.map((row) => ({
-    product: row.product,
-    merchants: row.merchant_count,
-  }));
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.product] = row.merchant_count;
+    return acc;
+  }, {});
 }
 
 /* =========================
@@ -72,16 +64,16 @@ export async function fetchProductAdoption(): Promise<
 ========================= */
 
 export async function fetchKycFunnel(): Promise<{
-  started: number;
-  completed: number;
-  conversion_rate: number;
+  documents_submitted: number;
+  verifications_completed: number;
+  tier_upgrades: number;
 }> {
   const funnel: KycFunnel = await getKycFunnel();
 
   return {
-    started: funnel.started,
-    completed: funnel.completed,
-    conversion_rate: funnel.conversion_rate,
+    documents_submitted: funnel.documents_submitted,
+    verifications_completed: funnel.verifications_completed,
+    tier_upgrades: funnel.tier_upgrades,
   };
 }
 

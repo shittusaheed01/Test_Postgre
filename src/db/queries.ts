@@ -6,7 +6,7 @@ import { pool } from './pool';
 
 export interface TopMerchant {
   merchant_id: string;
-  total_volume: string; // numeric comes back as string from pg
+  total_volume: number;
 }
 
 export interface MonthlyActiveMerchant {
@@ -20,9 +20,9 @@ export interface ProductAdoption {
 }
 
 export interface KycFunnel {
-  started: number;
-  completed: number;
-  conversion_rate: number; // percentage
+  documents_submitted: number;
+  verifications_completed: number;
+  tier_upgrades: number;
 }
 
 export interface FailureRate {
@@ -38,7 +38,7 @@ export async function getTopMerchant(): Promise<TopMerchant | null> {
   const query = `
     SELECT
       merchant_id,
-      SUM(amount) AS total_volume
+      ROUND(SUM(amount), 2) AS total_volume
     FROM merchant_activities
     WHERE status = 'SUCCESS'
       AND amount IS NOT NULL
@@ -48,9 +48,19 @@ export async function getTopMerchant(): Promise<TopMerchant | null> {
     LIMIT 1
   `;
 
-  const { rows } = await pool.query<TopMerchant>(query);
+  const { rows } = await pool.query<{
+    merchant_id: string;
+    total_volume: string;
+  }>(query);
 
-  return rows[0] ?? null;
+  if (!rows[0]) {
+    return null;
+  }
+
+  return {
+    merchant_id: rows[0].merchant_id,
+    total_volume: Number(rows[0].total_volume),
+  };
 }
 
 /* =========================
@@ -75,7 +85,7 @@ export async function getMonthlyActiveMerchants(): Promise<
   );
 
   return rows.map((row) => {
-    const monthDate = new Date(row.month); // already in local timezone thanks to AT TIME ZONE
+    const monthDate = new Date(row.month);
     const year = monthDate.getFullYear();
     const month = String(monthDate.getMonth() + 1).padStart(2, '0');
 
@@ -112,28 +122,41 @@ export async function getProductAdoption(): Promise<ProductAdoption[]> {
    4. KYC Funnel
 ========================= */
 
-export async function getKycFunnel(): Promise<KycFunnel> {
+export async function getKycFunnel(): Promise<{
+  documents_submitted: number;
+  verifications_completed: number;
+  tier_upgrades: number;
+}> {
   const query = `
     SELECT
-      COUNT(DISTINCT merchant_id) AS started,
       COUNT(DISTINCT merchant_id)
-        FILTER (WHERE status = 'SUCCESS') AS completed
+        FILTER (WHERE product = 'KYC') AS documents_submitted,
+
+      COUNT(DISTINCT merchant_id)
+        FILTER (
+          WHERE product = 'KYC'
+          AND status = 'SUCCESS'
+        ) AS verifications_completed,
+
+      COUNT(DISTINCT merchant_id)
+        FILTER (
+          WHERE product = 'KYC'
+          AND status = 'SUCCESS'
+          AND merchant_tier IN ('VERIFIED', 'PREMIUM')
+        ) AS tier_upgrades
     FROM merchant_activities
-    WHERE product = 'KYC'
   `;
 
-  const { rows } = await pool.query(query);
-
-  const started = Number(rows[0]?.started ?? 0);
-  const completed = Number(rows[0]?.completed ?? 0);
-
-  const conversion_rate =
-    started === 0 ? 0 : Number(((completed / started) * 100).toFixed(2));
+  const { rows } = await pool.query<{
+    documents_submitted: string;
+    verifications_completed: string;
+    tier_upgrades: string;
+  }>(query);
 
   return {
-    started,
-    completed,
-    conversion_rate,
+    documents_submitted: Number(rows[0]?.documents_submitted ?? 0),
+    verifications_completed: Number(rows[0]?.verifications_completed ?? 0),
+    tier_upgrades: Number(rows[0]?.tier_upgrades ?? 0),
   };
 }
 
@@ -154,10 +177,10 @@ export async function getFailureRates(): Promise<FailureRate[]> {
   const { rows } = await pool.query(query);
 
   return rows.map((row) => {
-    const failed = Number(row.failed_count);
-    const total = Number(row.total_count);
+    const failed = Number(row.failed_count ?? 0);
+    const total = Number(row.total_count ?? 0);
 
-    const rate = total === 0 ? 0 : Number(((failed / total) * 100).toFixed(2));
+    const rate = total === 0 ? 0 : Number(((failed / total) * 100).toFixed(1));
 
     return {
       product: row.product,

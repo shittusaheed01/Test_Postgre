@@ -170,7 +170,7 @@ curl http://localhost:8080/analytics/top-merchant
 
 - CSV headers match the schema column names exactly.
 - `amount` is numeric and stored as `NUMERIC(18,2)` in PostgreSQL but if no amount is provided, it logs it and saves it as 0.
-- if `event_timestamp` not provided, the entry is saved as the name of it's parent file + 5 hours, instead of leaving it as null.
+- if `event_timestamp` is empty, the entry is saved as the name of it's parent file + 5 hours, instead of leaving it as null.
 - KYC completion is identified by `product = 'KYC'` and `status = 'SUCCESS'`.
 - CSV data is immutable and imported only once.
 
